@@ -5,7 +5,7 @@ author: "Arye Santosh"
 thanks: "Project repository available at: [https://github.com/arye69/MATH261A-p2](https://github.com/arye69/MATH261A-p2)."
 date: today
 date-format: long
-abstract: "This paper uses simple linear regression to test whether driving or putting is a stronger linear predictor of scoring average on the PGA Tour. Using aggregated 2022 player data, scoring average is modeled as a function of average strokes gained off-the-tee and average strokes gained putting. The analysis reveals that while both predictors have a statistically significant negative relationship with scoring average, the model with putting performance has a higher R-squared than driving performance and explains more of the variability. From the data and analysis, it can be concluded that putting performance is a stronger linear predictor of average score for professional golfers."
+abstract: "This study examines factors associated with career longevity for NBA players drafted between 1990 and 2010, comparing a full linear regression model to a LASSO-regularized model. Using career performance statistics, we find that a parsimonious LASSO model selecting only average minutes and rebounds per game performs nearly as well as the full model in out-of-sample prediction. The results demonstrate that simpler models focusing on core contribution metrics can explain career length almost as effectively as more complex specifications, highlighting the utility of regularization for variable selection in sports analytics."
 format: pdf
 bibliography: references.bib
 ---
@@ -416,7 +416,7 @@ comparison_table %>%
   column_spec(7, color = "black")     # BIC
 ```
 
-Both models appear to have performed similarly. As expected, the full model did better than the LASSO model on many different metrics: Root Mean Squared Error, Mean Absolute Error, $R^2$ and AIC. However, the adj. $R^2$, BIC, and Bias are both poor, meaning the marginal gains it has over the LASSO model in other categories are likely due to the sheer number of extra predictors.
+Both models appear to have performed similarly. As expected, the full model did better than the LASSO model on many different metrics: Root Mean Squared Error, Mean Absolute Error, $R^2$ and AIC. However, the adj. $R^2$, BIC, and Bias are both poor, meaning the marginal gains it has over the LASSO model in other categories are likely due to the sheer number of extra predictors. Particularly, the LASSO model only being 0.019 higher in RMSE, 0.005 higher in MAE, and 0.013 higher in adjusted $R^2$ is enlightening.
 
 The following plot details the actual vs. predicted career length for both models, with the full model in red, LASSO model in blue, and the dashed lines being the prediction lines:
 

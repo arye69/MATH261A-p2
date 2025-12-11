@@ -9,7 +9,7 @@ Data used in this project is obtained from [SCORE Sports Data Repository](https:
 
 The final report and code were written by Arye Santosh, but the following resources were used for preliminary research:
 
-* A
+* [NBA Player positions and interactions](https://www.sloansportsconference.com/research-papers/analyzing-nba-player-positions-and-interactions-with-density-functional-fluctuation-theory)
 
 # Acknowledgments
 
