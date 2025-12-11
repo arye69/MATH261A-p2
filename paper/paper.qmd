@@ -1,8 +1,8 @@
 ---
-title: "A Statistical Examination of Golf Strokes to Predict Scoring Average"
-subtitle: "Driving or Putting: which has a larger impact on overall game?"
+title: "Modeling Career Longevity in NBA Players: An Analysis of Draft Position and Performance Metrics"
+subtitle: "For players drafted between 1990 and 2010, which career performance metrics are most strongly associated with career longevity, controlling for draft position?"
 author: "Arye Santosh"
-thanks: "Project repository available at: [https://github.com/arye69/MATH261A-p1](https://github.com/arye69/MATH261A-p1)."
+thanks: "Project repository available at: [https://github.com/arye69/MATH261A-p2](https://github.com/arye69/MATH261A-p2)."
 date: today
 date-format: long
 abstract: "This paper uses simple linear regression to test whether driving or putting is a stronger linear predictor of scoring average on the PGA Tour. Using aggregated 2022 player data, scoring average is modeled as a function of average strokes gained off-the-tee and average strokes gained putting. The analysis reveals that while both predictors have a statistically significant negative relationship with scoring average, the model with putting performance has a higher R-squared than driving performance and explains more of the variability. From the data and analysis, it can be concluded that putting performance is a stronger linear predictor of average score for professional golfers."
@@ -18,48 +18,54 @@ library(kableExtra)
 library(tidyverse)
 library(stargazer)
 library(gridExtra)
-PGA2022 <- read.csv(here("data", "PGA2022.csv"))
+library(glmnet)
+nba_draft <- read.csv(here("data", "nba_draft.csv"))
 ```
 
 
 
 # Introduction
 
-In the world of golf, the age old adage goes "Drive for show, putt for dough." It suggests that while long tee shots (drives) are impressive, it's a skilled short game (putting) that secures more match victories and consequently, more financial success. This is a long held belief in golf, understandably influencing which aspect people think of as more difficult or more profitable in some cases. Professional Golfers' Association (PGA) tour performance data can assist in substantiating such a claim [@PGAtour].
+The National Basketball Association (NBA) is a multi-billion dollar industry where talent acquisition and player development represent significant investments. Each year, teams spend resources on scouting, drafting, and training young players, with the hope that their investments will pay off long term. Career longevity - the number of years a player remains in the league - is a critical measure of player value, impacting team continuity, salary management, and organizational planning. Understanding which factors are most strongly associated with longer careers can potentially provide insights to not only what teams can further investments in, but also what players should focus on to maximize the span of their career.
 
-While the relationship between certain golf skills is often discussed as tee time banter, this paper aims to address this area which is seldom backed by quantitative analysis. Using actual PGA metrics such as strokes gained, it can be determined whether power off the tee or expertise on the green is more strongly (linearly) associated with a professional golfers performance.
+Previous research on NBA player performance examines many metrics of career success, such as All-Star selections, statistical production peaks, and of course, salary. Studies have shown draft position serves as a strong predictor of initial playing opportunities and early career success. However, the relationship between draft position, career performance metrics, and career longevity remains obscure. Simple bivariate comparisons or using multiple correlated performance variables without addressing multicollinearity is common in existing models. This gap limits the understanding of which factors independently affect career longevity, while controlling for draft position.
 
-As aforementioned, actual PGA tour data will be utilized in this analysis. A set of simple linear regression models will be used to model a golfer's scoring average (`avgScore`) based on the two key performance metrics: strokes gained off the tee (`driveSG`) and strokes gained putting (`puttsSG`). The heart of this analysis lies in fitting and comparing these two models to see which is a more effective linear predictor of scoring. The paper will also examine the validity of a linear model in this context.
+This paper addresses said gap by comparing two modeling approaches: a full multiple linear regression model and a LASSO (Least Absolute Shrinkage and Selection Operator) regularized model, both applied to NBA players drafted between 1990 and 2010. We use career performance statistics to conduct an explanatory analysis of factors associated with longevity, acknowledging that these statistics are not available at draft time for true prediction. The LASSO model automatically selects the most important variables while shrinking less explanatory coefficients to 0, resulting in a more parsimonious model. Both models are evaluated using holdout validation on temporally separated test data to assess their comparative performance and generalizability.
 
-The remainder of the paper is structured as follows. The **Data** section goes over the PGA dataset in detail including its source, relevant variables, and an explanation of pertinent metrics. The **Methods** section defines the simple linear regression technique used and describes the process of evaluating model fit and assumption checks. Finally, the **Results** section presents and assesses the findings of the fitted models, including summaries of the data and diagnostic plots.
+The remainder of the paper is as follows. The `Data` section goes over the NBA draft dataset in detail including its source, relevant variables, and an explanation of pertinent metrics. The `Methods` section defines the multiple linear regression method used and describes the process of evaluating model fit and assumption checks. Finally, the `Results` section presents and assesses the findings of the fitted model comparisons between a full model (with all predictors) and a LASSO selected model. 
 
 # Data
 
-The data for this analysis was obtained from the [SCORE Sports Data Repository](https://data.scorenetwork.org/golf/pga_drive_putt.html) which sourced its data from the official [PGA Tour stats](https://www.pgatour.com/stats) website after the 2022 tournament season [@PGA2022].
+The data for this analysis was obtained from the [SCORE Sports Data Repository](https://data.scorenetwork.org/basketball/nba_draft_1990-2021.html) which sourced its data from a [Kaggle dictionary](https://www.kaggle.com/datasets/benwieland/nba-draft-data), the author of which sourced the data from the [National Collegiate Athletic Association](https://www.ncaa.org/sports/2017/9/5/ncaa-research-interactive-databases.aspx) [@NBA].
 
-The observational unit in the raw dataset (`PGA2022`) is a player-tournament combination. Each of the 1387 observations represents a single players' stats from a single tournament they played in. Each tournament consists of four rounds and it's possible for golfers to be eliminated after as few as two rounds. A caveat of the data collection process is that only players that made it *all four rounds* were taken as observations. This means that only the most skilled of all competing professional golfers were included in this data. The data covers 19 tournaments and 280 unique golfers in total.
+The observational unit in the raw dataset (`nba_draft`) is a basketball player. The data was collected in 2021 with every player in the dataset having all their stats current to that year. Each observation (and player) is unique, so out of the 1621 observations, each one represents an individual player and their stats. No player is repeated in the dataset. 
 
 ### Relevant variables
 The following variables are relevant:
 
-* `avgScore` (Scoring average): The response variable denoting the average number of strokes a golfer used for a standard 18-hole. It's calculated as the total number of strokes for all holes divided by the total tournament rounds (usually four). Lower is better.
+* `years_played`: The response variable denoting the number of years a player has been in the league for, since they were drafted
 
-* `puttsSG` (Strokes gained putting): A predictor that measures how many strokes a golfer gains or loses compared to the PGA average on the green. For example, if the average strokes required to make a putt on the green is 1.5 and a golfer makes it in one stroke, they've gained 0.5 strokes. A positive value indicates better than average putting ability.
+* `mins_per_game`: average number of minutes played per game by a player during their NBA career.
 
-* `driveSG` (Strokes gained driving): A predictor that measures how many strokes a golfer gains or loses compared to the PGA average off-the-tee on all par 4s and 5s. The metric is calculated exactly how `puttsSG` is and accounts for both distance and accuracy. Again, a positive value indicates better than average driving ability.
+* `pts_per_game`: average number of points scored per game by a player during their NBA career.
 
-A key limitation to note is that the average score is prone to artificial inflation and deflation. Certain tournaments and courses are simply more difficult than others, and factors like changes in weather and conditions play a role as well. A player who plays in friendlier tournaments like The Sentry or The American Express, where scores are consistently under par, is likely to have a lower average score than a player who competes in difficult tournaments like the Honda Classic or Arnold Palmer Invitational, which are intensely technical.
+* `rebounds_per_game`: average number of rebounds completed per game by a player during their NBA career.
 
-While the `avgScore` variable is affected by this course difference, both predictors (of the Strokes Gained metric) are not. This is due to the nature of the Strokes Gained metric, which is both a course and situation specific measurement. This is possible due to the massive amount of data collected by the PGA. For any given shot on any course within a PGA Tour sponsored tournament, they know the average number of shots it takes a pro golfer to get the ball in the hole from the *exact* location and situation. This makes both the `puttsSg` and `driveSG` variables reliable predictors due to their inherent capability to control for course difficulty [@strokes_gained].
+* `assists_per_game`: average number of assists completed per game by a player during their NBA career.
+
+* `fg_percent`: percentage of field goals made by a player during their NBA career.
+
+* `three_pt_percent`: percentage of three point shots made by a player during their NBA career.
+
+* `ft_percent`: percentage of free throws made by a player during their NBA career.
+
+* `pick_overall`: The overall pick number a player was selected during the NBA draft for their year. Note this is labelled as `draft_pick` in the data dictionary, but called `pick_overall` in the actual dataset.
+
+
 
 ### Data cleaning
-With over 1300 observations and only 280 unique golfers, it's clear that to measure any kind of linear relationship without introducing a false correlation effect, the data must be reduced down to a maximum of 280 observations, with only a single golfer per observation. To do this, the original dataframe was aggregated into only the averages of all pertinent metrics using R [@Base_R]. The result is a dataframe with the new variables `avg_Score` (average score, response), `avg_puttsSG` (average strokes gained putting, predictor), and `avg_driveSG` (average strokes gained off-the-tee, predictor). All of these are simply averages of the original stats by player, which reduces the bias of treating each tournament as an independent event. 
 
-Two observations for players D.J. Trahan and David Hearn had empty stats in the original dataframe and were omitted from the cleaned data, resulting in a total 278 unique golfers with complete stats.
-
-Some useful summary statistics about the pertinent variables can be found below, compiled in Table 1 using Kable [@kableExtra]. 
-
-
+The data cleaning process from the raw dataset to the used one was fairly simple. First, all players with a draft year after 2010 were filtered out. There's a high likelihood that players drafted after that would still be part of the league, which would defeat the purpose of predicting career longevity. The `pick_overall` variable was modified to be a categorical one, labelled `draft_cat`. `draft_cat` was coded to label players with draft numbers 1-14 as "Lottery" (Lottery picks), players drafted 15-30 as "Mid-first", players drafted 31-45 as "Early-second", and those drafted 46+ as "Late-second". The use of a categorical variable allowed for group generalizations by using draft pick as a predictor. Dplyr was used to clean this dataset [@dplyr].
 
 ```{r}
 #| echo: false
@@ -67,272 +73,153 @@ Some useful summary statistics about the pertinent variables can be found below,
 #| message: false
 
 # Clean data
-pga_agg <- PGA2022 |>
-  group_by(playerName) |>
-  summarise(
-    avg_Score = mean(avgScore, na.rm = TRUE),
-    avg_puttsSG = mean(puttsSG, na.rm = TRUE),
-    avg_driveSG = mean(driveSG, na.rm = TRUE),
-    Tournaments_Played = n()
-  )
+nba <- nba_draft[which(nba_draft$draft_year <= 2010),]
+nba <- nba |>
+  drop_na(years_played, mins_per_game, pts_per_game, rebounds_per_game, 
+          assists_per_game, fg_percent, three_pt_percent, ft_percent)
 
-pga_agg <- pga_agg[-c(77, 81),]
-
-summary_stats <- pga_agg |>
-  summarise(
-    Variable = c("avg_Score", "avg_puttsSG", "avg_driveSG"),
-    Mean = c(mean(avg_Score), mean(avg_puttsSG), mean(avg_driveSG)),
-    SD = c(sd(avg_Score), sd(avg_puttsSG), sd(avg_driveSG)),
-    Min = c(min(avg_Score), min(avg_puttsSG), min(avg_driveSG)),
-    Max = c(max(avg_Score), max(avg_puttsSG), max(avg_driveSG))
-  )
-
-# Create the formatted table
-summary_stats |>
-  kbl(caption = "Summary Statistics of Key Variables (n = 278 golfers)",
-      digits = 2,
-      col.names = c("Variable", "Mean", "SD", "Min", "Max"),
-      align = c('l', 'c', 'c', 'c', 'c'),
-      booktabs = TRUE) |>
-  kable_styling(full_width = FALSE, 
-                latex_options = c("hold_position", "scale_down"))
+# "Lottery (1-14)", "Mid-first (15-30)", "Early-second (31-45)", "Late-second (46+)"
+nba$draft_cat <- cut(
+  nba$pick_overall,
+  breaks = c(0, 14, 30, 45, Inf),
+  labels = c("Lottery", "Mid-first", "Early-second", "Late-second"),
+  include.lowest = TRUE
+)
 
 ```
 
-Find a scatter plot of `avg_puttsSg` vs. `avg_Score` below. All plots were created using ggplot2 [@ggplot2].
-
-```{r}
-#| echo: false
-#| warning: false
-#| message: false
-
-plot_putting <- pga_agg |>
-  ggplot(aes(x = avg_puttsSG, y = avg_Score)) +
-  geom_point(alpha = 0.6, color = "steelblue") +
-  labs(
-    title = "Strokes Gained: Putting vs Scoring Average",
-    x = "Strokes Gained Putting (Average)",
-    y = "Scoring Average",
-    caption = "Lower scoring average and higher strokes gained indicate better performance"
-  ) +
-  theme_bw() +
-  theme(plot.title = element_text(size = 10, hjust = 0.5),
-        axis.title = element_text(size = 10),
-        plot.caption = element_text(size = 6))
-print(plot_putting)
-
-```
-
-Find a scatter plot of `avg_driveSG` vs. `avg_Score` below.
-
-```{r}
-#| echo: false
-#| warning: false
-#| message: false
-
-plot_putting <- pga_agg |>
-  ggplot(aes(x = avg_driveSG, y = avg_Score)) +
-  geom_point(alpha = 0.6, color = "steelblue") +
-  labs(
-    title = "Strokes Gained: Driving vs Scoring Average",
-    x = "Strokes Gained Driving (Average)",
-    y = "Scoring Average",
-    caption = "Lower scoring average and higher strokes gained indicate better performance"
-  ) +
-  theme_bw() +
-  theme(plot.title = element_text(size = 10, hjust = 0.5),
-        axis.title = element_text(size = 10),
-        plot.caption = element_text(size = 6))
-print(plot_putting)
-
-```
-
-The plots suggest that negative linear relationships might exist between both strokes gained metrics and scoring average, which aligns with the nature of the game: gaining strokes will likely improve scoring average. 
 
 ### Limitations
 
-A potential limitation of the data is measurement error. While the PGA Tour's [ShotLink](https://shotlink.com/) system is leagues ahead of what shot tracking used to be, it's still prone to factors like weather, shot variability, and equipment limitation. Additionally, the "Strokes Gained" metric is useful for measuring relative performance, but doesn't necessarily capture all aspects of how a golfer plays and relies heavily on the accuracy of the shot tracking equipment.
-
-As stated earlier, the tournament independence biased was mitigated as best as possible by using an aggregation of player stats. However, it should be noted that aggregation removes the ability to model the effects of specific course and tournament conditions. Hence, conclusions about such effects won't be discussed in this analysis.
-
-Finally, the limitation of varying course difficulty with regards to `avgScore` is one that cannot be resolved without further data collection. The idea of gauging course difficulty is one that isn't feasible since while there are certainly objectively difficult courses, there's a subjective aspect involved as well. Since the response variable is biased in this sense, it introduces some additional noise, but it's reasonable to assume that the trends will be preserved. See the **Relevant Variables** section for more on course difficulty and its effects.
+A potential limitation of the data is measurement error. As with anything sports related, no measurements are perfect, but they're as good as they'll get since they're from official NCAA data. Era effects are also lost. The NBA has changed a lot from 1990 to 2010 and those changes in playing style, rule modification, league expansion and other things of the sort likely affect the data. Another thing that's absent from the data is contextual variables, such as position, physical attributes, possible injuries, and anything else that would affect the metrics used to build the models in this paper. Finally, the practice of using career metrics to predict career longevity is definitely circular, but the models are mean for direct comparison as opposed to true prediction.
 
 # Methods
 
-To model a linear relationship between `avg_Score` and each of the predictors (`avg_puttsSg` and `avg_driveSG`), a simple linear regression (SLR) model will be used, with the goal of determining which metric is a stronger linear predictor of average score. The two models used are as follows.
+Both models followed a multiple linear regression framework, using a different set of predictors to model career longevity. The general model form is:
 
-**Model 1: Putting performance**
-
-$$\text{avg\_Score}=\beta_0+\beta_1(\text{avg\_puttsSG})+\varepsilon$$
-**Model 2: Driving performance**
-
-$$\text{avg\_Score}=\beta_0+\beta_1(\text{avg\_driveSG})+\varepsilon$$
+$$Y_i=\beta_0+\beta_1X_{i1}+\beta_2X_{i2}+\dots+\beta_nX_{in}+\varepsilon$$
 
 Where
 
-* `avg_Score` is the response variable, scoring average
+* $Y_i$ represents career longevity (in years) for player $i$
 
-* `avg_puttsSG` and `avg_driveSG` are the predictors in the two separate models. These are the average strokes gained putting and average strokes gained off-the-tee, discussed in greater detail in the **Data** section.
+* $\beta_0$ is the intercept term, denoting expected career longevity when all other predictors are 0
 
-* $\beta_0$ is the intercept term for each model, representing the average score when each predictor is equal to 0. Note that although the term $\beta_0$ is used for both models, the numeric value for this parameter will likely be different across models. 
+* $\beta_1, \beta_2, \dots,\beta_n$ are the regression coefficients for each predictor
 
-* $\beta_1$ is the slope term for each model, representing the expected change in average score given a unit increase in each predictor. Again, note that while the term is used for both models, it's likely the value will not be the same across models.
+* $X_{i1}, X_{i2}, \dots, X_{in}$ are the predictor variables for player $i$
 
-* $\varepsilon$ is the error term for each model, denoting the variation not captured by the model.
+* $\varepsilon$ is the random error term, denoting variance not captured by the model
+
+The full model will be structured as follows:
+$$
+\begin{aligned}
+\text{years\_played}_i = \beta_0 &+ \beta_1\text{mins\_per\_game}_i + \beta_2\text{pts\_per\_game}_i \\
+&+ \beta_3\text{rebounds\_per\_game}_i + \beta_4\text{assists\_per\_game}_i \\
+&+ \beta_5\text{fg\_percent}_i + \beta_6\text{three\_pt\_percent}_i \\
+&+ \beta_7\text{ft\_percent}_i + \sum_{k=1}^{3} \gamma_k \text{draft\_category}_{ik} + \epsilon_i
+\end{aligned}
+$$
+where $\gamma_k$ coefficients represent the effects of the categorical `draft_cat` variable (with the "Lottery" level as reference). The LASSO regularized model's objective function is:
+$$
+\min_{\beta_0, \beta} \left\{ \frac{1}{2n} \sum_{i=1}^n (y_i - \beta_0 - x_i^T\beta)^2 + \lambda \sum_{j=1}^p |\beta_j| \right\}
+$$
+where $n$ is the number of observations, $p$ is the number of predictors, and $\lambda \ge 0$ is the tuning parameter that controls the strength of regularization. The optimal $\lambda$ was selected using 10-fold cross-validation, minimizing the mean square error (MSE). The one standard-error lambda was utilized in this report as opposed to the minimum lambda, since the most parsimonious LASSO model was desired. 
 
 ### Variable selection and justification
 
-The response variable `avg_Score` was selected due to its straightforward measure of tournament success. There were other success metrics available including money and points, but certain tournaments offer different cash prizes and point levels, resulting in the need to standardize across tournaments in order to get meaningful results. For this reason, the average player score worked the best and yields meaningful results without many complications. Meanwhile, the predictor variables were the best choice since they're both Strokes Gained metrics. Primarily, both predictors being in terms of the same metric removed an element of bias across putting and driving analysis. Additionally, Strokes Gained is a tried and true metric within golf, further strengthening the use of the chosen predictors.
+The candidate predictors consisted of seven performance metrics and one categorical variable. The continuous predictors were `mins_per_game`, `pts_per_game`, `rebounds_per_game`, `assists_per_game`, `fg_percent`, `three_pt_percent`, and `ft_percent`. The categorical variable was `draft_cat`, added to the original dataset in processing. It has four levels, further described in the **Data** section.
 
-With regards to the chosen method, SLR seemed like a viable choice after visually inspecting the plots (in the **Data** section). From a visual standpoint, there's enough evidence to say that the true relationship could possibly be linear.
+The data was partitioned using a random 80-20 training-test split to create a training set with 829 observations and a test set with 197 observations. The split was performed with random seed (seed = 69) for reproducibility. 
 
 ### Model Validation
 
-A SLR analysis assumes linearity, independence of observations, normality of residuals, and equal variances (homoscedasticity). These assumptions were verified using the following.
+The models were evaluated using multiple criteria. The in-sample fit metrics used were:
 
-* Examination of plots of both predictors during exploratory analysis (see **Data**)
+* $R^2$ (coefficient of determination) and adjusted $R^2$
 
-* Inspection of relevant diagnostic plots (residuals plots and QQ plots in **Results**)
+* Akaike Information Criterion (AIC): AIC $= 2k-2\ln(\hat{L})$, where $k=$number of parameters
 
-* Aggregation of player stats to ensure all provided data was encompassed while keeping players independent (see **Data**)
+* Bayesian Information Criterion (BIC): BIC $= k\ln(n)-2\ln(\hat{L})$
 
-The fit of both models was evaluated using the coefficient of determination $R^2$ and the predictor significance was evaluated using the inbuilt slope parameter t-tests in R with a significance level of $\alpha = 0.05$.
+The out-of-sample fit metrics used were:
+
+* Root Mean Square Error (RMSE): $\sqrt{\frac{1}{n}\sum_{i=1}^n(y_i-\hat{y}_i)^2}$
+
+* Mean Absolute Error (MAE): $\frac{1}{n}\sum_{i=1}^n|y_i-\hat{y}_i|$
+
+* Bias: $\frac{1}{n}\sum_{i=1}^n(y_i-\hat{y}_i)$
 
 ### Software
 
-All statistical analysis was done in R [@Base_R]. The here package was used to import and load files [@here]. The lm() function in base R was utilized to fit the linear regression model and further diagnostic checks were generated from the same function output. Data manipulation and cleaning was performed using the Tidyverse package [@tidyverse]. All plots and visualizations were created using ggplot2 [@ggplot2] unless otherwise stated.
+All statistical analysis was done in R [@Base_R]. The here package was used to import and load files [@here]. The lm() function in base R was utilized to fit the linear regression model and further diagnostic checks were generated from the same function output. The cv.glmnet() function from the glmnet package [@glmnet] was also used for LASSO regression. Data manipulation and cleaning was performed using the Tidyverse package [@tidyverse]. All plots and visualizations were created using ggplot2 [@ggplot2] unless otherwise stated.
 
-### Limitations and extensions
+### Limitations
 
-A critical limitation of the structure of the data in this analysis is that course/tournament-specific effects will not be accounted for, as well as the variability within players' performances. This is due to the aggregation and is discussed in greater detail in the **Data** section. 
-
-A logical extension to this work could be a multiple linear regression model using both `avg_puttsSG` and `avg_driveSG` as predictors. It's possible that using both predictors could improve average score prediction. Another extension could be seeing whether the same predictors could be manipulated to work at predicting either financial success or overall tournament points. Finally, if it seems that the models in fact are not linear after SLR models are fitted, nonlinear transformations of the response would also be a possible extension.
+The approach chosen in this paper has several limitations. Firstly, the analysis only contains players drafted between 1990 and 2010 (inclusive), which may limit generalization to more recent years. Second, and probably the largest limitation, is that the majority of predictors consist of average career stats, which aren't available during a draft. This limits the analysis to the exploratory rather than the predictive realm. Another limitation of the analysis are factors that aren't captured by data. People that had injuries, greater positional value, less playing time, retired early, etc. are unaccounted for, since there's no feasible way to control for the slew of random kinks in the data. Hence, with only a little over 1000 observations, the analysis is limited in that regard. Finally, this paper only goes over one 80-20 data partition, of which there are many. Performance may vary across splits.
 
 # Results
 
-This section contains the results of the previously described analysis performed on each of the two proposed models. It starts with a check of all necessary assumptions for inference upon a linear regression model. After the assumptions check, both models are analyzed and a comparison is performed to address the central research question.
+This section contains the results of the previously described analysis performed on each of the two proposed models. It starts with a check of all necessary assumptions for inference upon a linear regression model. After the assumptions check, both models are analyzed and a prediction comparison is performed to address the central research question.
 
 ### Assumptions
 
-The assumptions for performing valid inference on a Normal error regression model are as follows:
-
-1. Linearity: The relationship between variables must reasonably linear. The exploratory scatterplots show this is the case (see the **Data Cleaning** section).
-
-2. Independence: Since the data consists of one observation per professional golfer (see **Data Cleaning**), it is assumed that golfers' performances are independent of each other.
-
-3. Normality of errors: The residuals for both models should be approximately normally distributed. A QQ plot of the residuals will be examined further along in this section.
-
-4. Equal variances: The variance of residuals for both models should be relatively constant. Residual plots are examined further in this section.
-
-The residuals and QQ plots for both the putting model can be found below:
-
-```{r, fig.height=3}
+```{r}
 #| echo: false
 
-regp <- lm(avg_Score ~ avg_puttsSG, data = pga_agg)
+# Create data partition (seed 69)
+set.seed(69)
+index <- sample(c(TRUE, FALSE), nrow(nba), replace=TRUE, prob=c(0.8,0.2))
+train <- nba[index,]
+test <- nba[!index,]
+# for LASSO
+x_train <- model.matrix(~ mins_per_game + pts_per_game + rebounds_per_game + 
+                          assists_per_game + fg_percent + three_pt_percent + 
+                          ft_percent + draft_cat, data = nba)
 
-putting_diagnostics <- pga_agg %>%
-  mutate(
-    fitted = fitted(regp),
-    residuals = residuals(regp),
-    sqrt_abs_resid = sqrt(abs(residuals))
-  )
+x_train <- x_train[, -1]
+y_train <- nba$years_played
 
-# Plot 1: Residuals vs Fitted
-p1 <- ggplot(putting_diagnostics, aes(x = fitted, y = residuals)) +
-  geom_point(alpha = 0.6, color = "steelblue", size = 2) +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "darkred", linewidth = 0.8) +
-  geom_smooth(se = F, color = "black", method = "loess", formula = y ~ x) +
-  labs(
-    title = "Putting Residuals vs Fitted Values",
-    x = "Fitted Values (Predicted Scoring Average)",
-    y = "Putting Residuals",
-    caption = "Zero reference line in red, smooth line in black"
-  ) +
-  theme_bw() +
-  theme(plot.title = element_text(size = 10, hjust = 0.5),
-        axis.title = element_text(size = 10),
-        plot.caption = element_text(size = 6))
-p1
+x_test <- model.matrix(~ mins_per_game + pts_per_game + rebounds_per_game + 
+                         assists_per_game + fg_percent + three_pt_percent + 
+                         ft_percent + draft_cat, data = test)
+x_test <- x_test[, -1]
+y_test <- test$years_played
 
-```
-```{r, fig.height=3}
-#| echo: false
-p2 <- ggplot(putting_diagnostics, aes(sample = residuals)) +
-  stat_qq_line(color = "darkred", linewidth = 0.8, linetype = "dashed") +
-  stat_qq(color = "steelblue", alpha = 0.6, size = 2) +
-  labs(
-    title = "Normal Q-Q Plot of Putting Residuals",
-    x = "Theoretical Quantiles",
-    y = "Sample Quantiles",
-    caption = "QQ line in red"
-  ) +
-  theme_bw() +
-  theme(
-    plot.title = element_text(size = 10, hjust = 0.5),
-        axis.title = element_text(size = 10),
-        plot.caption = element_text(size = 6))
-p2
-```
+# Creating models
+full_model <- lm(years_played ~ mins_per_game + pts_per_game + 
+                   rebounds_per_game + assists_per_game + fg_percent + 
+                   three_pt_percent + ft_percent + draft_cat, 
+                 data = nba)
 
-From the plots, it can be seen that the residuals, while heavily clustered, have similar variance. There's no 'cone shape', which is encouraging, although observation 246 appears to be a heavy outlier. The QQ plot is also relatively good, showing that the residuals are likely normal.
-
-Below are the residuals and QQ plots for the driving model:
-```{r, fig.height=3}
-#| echo: false
-
-regd <- lm(avg_Score ~ avg_driveSG, data = pga_agg)
-
-driving_diagnostics <- pga_agg %>%
-  mutate(
-    fitted = fitted(regd),
-    residuals = residuals(regd),
-    sqrt_abs_resid = sqrt(abs(residuals))
-  )
-
-# Plot 1: Residuals vs Fitted
-p1 <- ggplot(driving_diagnostics, aes(x = fitted, y = residuals)) +
-  geom_point(alpha = 0.6, color = "steelblue", size = 2) +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "darkred", linewidth = 0.8) +
-  geom_smooth(se = F, color = "black", method = "loess", formula = y ~ x) +
-  labs(
-    title = "Driving Residuals vs Fitted Values",
-    x = "Fitted Values (Predicted Scoring Average)",
-    y = "Driving Residuals",
-    caption = "Zero reference line in red, smooth line in black"
-  ) +
-  theme_bw() +
-  theme(plot.title = element_text(size = 10, hjust = 0.5),
-        axis.title = element_text(size = 10),
-        plot.caption = element_text(size = 6))
-p1
+set.seed(69)
+cv_lasso <- cv.glmnet(x = x_train, 
+                      y = y_train,
+                      alpha = 1,  # 1 for LASSO, 0 for ridge
+                      nfolds = 10,
+                      standardize = TRUE)
 
 ```
-```{r, fig.height=3}
-#| echo: false
-p2 <- ggplot(driving_diagnostics, aes(sample = residuals)) +
-  stat_qq_line(color = "darkred", linewidth = 0.8, linetype = "dashed") +
-  stat_qq(color = "steelblue", alpha = 0.6, size = 2) +
-  labs(
-    title = "Normal Q-Q Plot of Driving Residuals",
-    x = "Theoretical Quantiles",
-    y = "Sample Quantiles",
-    caption = "QQ line in red"
-  ) +
-  theme_bw() +
-  theme(
-    plot.title = element_text(size = 10, hjust = 0.5),
-        axis.title = element_text(size = 10),
-        plot.caption = element_text(size = 6))
-p2
-```
-The driving residuals plot looks even better than the one for putting, with only a few outliers, but mostly constant variance. The QQ plot is again very good with almost all observations falling on the line, indicating passable error normality. 
 
-From the diagnostic plots, it can be concluded that the data for both models reasonably passes the final two assumptions (equal variances and error normality), validating the inferences in the following section.
 
-## Model 1: Putting performance and scoring average
+The assumptions for performing valid inference on a Normal error multiple regression model are as follows:
 
-Fitting an SLR model between strokes gained putting and scoring average yields the following table created using Stargazer [@stargazer]:
+1. Linearity: The relationship between variables must reasonably linear. With multiple linear regression, this is harder to determine without domain knowledge, but it's not unreasonable to assume basketball metrics and career longevity could be linearly associated to some degree. The residuals plots for both models look fairly well distributed, but there's a visible diagonal line where the points won't cross 0. It's not enough to warrant a transformation, but would likely limit how useful a linear model can be. See the plots folder in the repository for exact plots.
+
+2. Independence: Since the data consists of one basketball player per observation and each player is unique, the observations are assumed independent (see **Data** section).
+
+3. Normality of errors: The residuals for both models should be approximately normally distributed. Note the QQ plots for both models appear to deviate at the ends, indicating some lack of normality. However, the usable region towards the center has the majority of points on the QQ line. Again, find diagnostic plots for both models in the plots folder of the repository.
+
+4. Equal variances: The variance of residuals for both models should be relatively constant. Note there does appear to be some behavior indicative of unequal variances in the residual plots for both models. The variance starts small and grows to a stable amount, so the small variance at the beginning of the plot could possibly be attributed to lack of observations. See the residuals plots for both models in the plots folder.
+
+5. Multicollinearity: Multiple highly correlated predictors can ruin MLR models. However, since the purpose of the following analysis is to determine how a model with almost certain multicollinearity (full model) performs against a model with much less (LASSO model), this assumption can be disregarded. Although clever variable selection with good domain knowledge can mitigate multicollinearity, there are many aspects of basketball that are correlated in general (see **Data** for more information).
+
+Overall, the models would not fulfill assumptions for this dataset to produce reliable predictions. However, since this paper aims to compare the models with each other, the purpose of creating such models can still be fulfilled despite the failure of assumptions.
+
+
+## Model 1: Full model
+
+Fitting an MLR model with all discussed predictors yields the following summary, created using Stargazer [@stargazer]:
 
 
 ```{r}
@@ -340,55 +227,45 @@ Fitting an SLR model between strokes gained putting and scoring average yields t
 #| message: false
 #| echo: false
 
-sump <- summary(regp)
+sumf <- summary(full_model)
 
-stargazer(regp,
-          title = "Regression of scoring average on putting performance",
+stargazer(full_model,
+          title = "Regression of all predictors on years played",
           font.size = "footnotesize",
           header = FALSE)
 
 ```
 
-The hypotheses for the test on the slope coefficient $\beta_1$ were:
+The hypotheses for the test on each slope coefficient $\beta_i$ were:
 
-* $H_0:\beta_1 = 0$ (There is no linear relationship between average strokes gained putting and average score)
-* $H_a:\beta_1 \not=0$ (There is a linear relationship between average strokes gained putting and average score)
+* $H_0:\beta_i = 0$ (There is no linear relationship between predictor $i$ and years played)
+* $H_a:\beta_1 \not=0$ (There is a linear relationship between predictor $i$ and years played)
 
-As can be seen from the table, the regression revealed a statistically significant negative relationship between putting performance and average score with a $b_1$ p-value of `r sump$coefficients[8]`. This p-value is for the t-test of the slope coefficient and is less than the common alpha level of 0.05, leading us to reject $H_0$. Find a discussion of the pertinent assumptions for such a test in the **Assumptions** section. The fitted regression equation is
+As can be seen from the table, the regression revealed multiple highly significant predictors within the full model: `mins_per_game`, `rebounds`_per_game`, `assists_per_game`, fg_percent`, `draft_cat` (the Late-second category) and `three_pt_percent`. This p-value is for the t-test of the slope coefficient and is less than the common alpha level of 0.05, leading us to reject $H_0$. Find a discussion of the pertinent assumptions for such a test in the **Assumptions** section. The fitted regression equation (without any variable selection) is
 
-$$\text{avg\_Score}=70.377 - 0.612(\text{avg\_puttsSG})$$
+$$
+\begin{aligned}
+\text{years\_played} &= `r round(coef(full_model)[1], 3)` \\
+&\quad + `r round(coef(full_model)["mins_per_game"], 3)`(\text{mins\_per\_game}) \\
+&\quad `r ifelse(coef(full_model)["pts_per_game"] >= 0, "+", "-")` `r round(abs(coef(full_model)["pts_per_game"]), 3)`(\text{pts\_per\_game}) \\
+&\quad + `r round(coef(full_model)["rebounds_per_game"], 3)`(\text{rebounds\_per\_game}) \\
+&\quad + `r round(coef(full_model)["assists_per_game"], 3)`(\text{assists\_per\_game}) \\
+&\quad + `r round(coef(full_model)["fg_percent"], 3)`(\text{fg\_percent}) \\
+&\quad + `r round(coef(full_model)["three_pt_percent"], 3)`(\text{three\_pt\_percent}) \\
+&\quad + `r round(coef(full_model)["ft_percent"], 3)`(\text{ft\_percent}) \\
+&\quad + `r round(coef(full_model)["draft_catMid-first"], 3)`(\text{draft\_cat}_{\text{Mid-first}}) \\
+&\quad `r ifelse(coef(full_model)["draft_catEarly-second"] >= 0, "+", "-")` `r round(abs(coef(full_model)["draft_catEarly-second"]), 3)`(\text{draft\_cat}_{\text{Early-second}}) \\
+&\quad `r ifelse(coef(full_model)["draft_catLate-second"] >= 0, "+", "-")` `r round(abs(coef(full_model)["draft_catLate-second"]), 3)`(\text{draft\_cat}_{\text{Late-second}})
+\end{aligned}
+$$
 
-The slope coefficient of -0.612 means that for every stroke gained against the PGA average on the green, a professional golfers scoring average is expected to decrease by 0.612 strokes. The $R^2$ value of the model is 0.154, which means that putting performance only accounted for about 15.4\% of the variation in average score. This translates to average strokes gained putting being a weak predictor of average score.
+Beyond statistical significance, coefficient magnitudes provide insights to which predictors are more influential. The positive coefficients for `mins_per_game`(0.336), `rebounds_per_game` (0.526), and `assists_per_game` (0.242) suggest that players who have more playing time and contribute across such categories tend to have longer careers. Shooting efficiency especially appears to be more consequential than scoring volume. `fg_percent` (4.078) and `three_pt_percent` (2.855) have large positive coefficients, while `pts_per_game` has a non-significant negative coefficient, likely indicating some multicollinearity.
 
-Below is a plot of `avg_Score` vs. `avg_puttsSG` with a fitted regression line and 95\% confidence interval shading around it.
+The draft position coefficients reveal a graded relationship: compared to lottery picks (the reference category), mid-first round picks show minimal difference (0.105 years), early-second round picks average 0.454 fewer years, and late-second round picks average 0.745 fewer years - with only the latter difference reaching statistical significance. This pattern suggests that the draft position advantage diminishes after the first round.
 
-```{r}
-#| echo: false
-#| message: false
-#| warning: false
+## Model 2: LASSO selected model
 
-plot_putting_fitted <- pga_agg |>
-  ggplot(aes(x = avg_puttsSG, y = avg_Score)) +
-  geom_point(alpha = 0.6, color = "steelblue") +
-  geom_smooth(method = "lm", se = TRUE, color = "darkred", fill = "lightpink", linewidth = 0.8) +
-  labs(
-    title = "Strokes Gained: Putting vs Scoring Average (fitted)",
-    x = "Strokes Gained Putting (Average)",
-    y = "Scoring Average",
-    caption = "Fitted regression line in red, 95% confidence bands in pink. Lower scoring average and higher strokes gained indicate better performance"
-  ) +
-  theme_bw() +
-  theme(plot.title = element_text(size = 10, hjust = 0.5),
-        axis.title = element_text(size = 10),
-        plot.caption = element_text(size = 6))
-
-print(plot_putting_fitted)
-
-```
-
-## Model 2: Driving performance and scoring average
-
-The SLR model of scoring average on strokes gained off-the-tee produced the following output table:
+To address multicollinearity and identify the most important predictors, LASSO regression was employed. For more information on how LASSO selects predictors, see the **Methods** section. Through 10-fold cross-validation on the training data, the optimal regularization parameter was determined.
 
 
 ```{r}
@@ -396,58 +273,233 @@ The SLR model of scoring average on strokes gained off-the-tee produced the foll
 #| message: false
 #| echo: false
 
-sumd <- summary(regd)
+cv_data <- data.frame(
+  lambda = cv_lasso$lambda,
+  cvm = cv_lasso$cvm,
+  cvsd = cv_lasso$cvsd,
+  cvup = cv_lasso$cvup,
+  cvlo = cv_lasso$cvlo
+)
 
-stargazer(regd,
-          title = "Regression of scoring average on driving performance",
-          font.size = "footnotesize",
-          header = FALSE)
+ggplot(cv_data, aes(x = -log(lambda))) +
+  geom_point(aes(y = cvm), color = "red", size = 2) +
+  geom_errorbar(aes(ymin = cvlo, ymax = cvup), 
+                width = 0.1, color = "grey", alpha = 0.7) +
+  geom_vline(xintercept = -log(cv_lasso$lambda.min), 
+             linetype = "dashed", color = "blue") +
+  geom_vline(xintercept = -log(cv_lasso$lambda.1se), 
+             linetype = "dashed", color = "darkgreen") +
+  labs(
+    title = "LASSO Cross-Validation Curve",
+    x = "-log(lambda)",
+    y = "Mean Squared Error (MSE)"
+  ) +
+  theme_minimal()
 ```
 
-The hypotheses for the test on the slope coefficient $\beta_1$ were:
+The above figure displays cross-validation results for LASSO regression. The red dots represent the mean cross-validated error (MSE) for each $\lambda$ value. The vertical bars (confidence brackets) show 1 standard error of the MSE estimates. The green dashed vertical line indicates $\lambda_{min}$ (minimal MSE), and the blue dashed line indicates $\lambda_{1se}$ (largest λ within 1 standard error of the minimum, selected for the model).
 
-* $H_0:\beta_1 = 0$ (There is no linear relationship between average strokes gained driving and average score)
-* $H_a:\beta_1 \not=0$ (There is a linear relationship between average strokes gained driving and average score)
-
-As expected, this regression also yielded a statistically signficant negative relationship between driving performance and scoring average. The p-value for the slope of this model is `r sumd$coefficients[8]`, leading us to reject the null hypothesis again at significance level 0.05. Find a discussion of the pertinent assumptions for the $\beta_1$ t-test in the **Assumptions** section. The fitted regression equation is
-
-$$\text{avg\_Score}=70.269 - 0.696(\text{avg\_driveSG})$$
-
-Similar to the putting performance, the -0.696 slope coefficient denotes that for every one stroke increase in strokes gained over the PGA average, a professional golfer's average score is expected to decrease by 0.696 points. Despite the more extreme slope coefficient between average strokes gained off-the-tee and average score, the $R^2$ is even lower than that of the previous model, at 0.104. This means only 10.4\% of the variation in average score is explained by `avg_driveSG`, making it a weak predictor.
-
-Below is a plot of `avg_Score` vs. `avg_puttsSG` with a fitted regression line and 95\% confidence interval shading.
+The cross-validation yielded a minimum mean squared error at $\lambda_{min}=0.0325$. However, $\lambda_{min}$ still kept all predictors, so the more parsimonious one-standard-error $\lambda_{1se}=0.5303$ was utilized to build the LASSO model. The parsimonious LASSO model summary is as follows:
 
 ```{r}
-#| echo: false
+#| results: asis
 #| message: false
-#| warning: false
+#| echo: false
 
-plot_driving_fitted <- pga_agg |>
-  ggplot(aes(x = avg_driveSG, y = avg_Score)) +
-  geom_point(alpha = 0.6, color = "steelblue") +
-  geom_smooth(method = "lm", se = TRUE, color = "darkred", fill = "lightpink", linewidth = 0.8) +
-  labs(
-    title = "Strokes Gained: Driving vs Scoring Average (fitted)",
-    x = "Strokes Gained Driving (Average)",
-    y = "Scoring Average",
-    caption = "Fitted regression line in red, 95% confidence bands in pink. Lower scoring average and higher strokes gained indicate better performance"
-  ) +
-  theme_bw() +
-  theme(plot.title = element_text(size = 10, hjust = 0.5),
-        axis.title = element_text(size = 10),
-        plot.caption = element_text(size = 6))
+coef_min <- coef(cv_lasso, s = "lambda.min")
+coef_1se <- coef(cv_lasso, s = "lambda.1se")
+selected_vars <- coef_1se[coef_1se[,1] != 0,]
+selected_var_names <- rownames(coef_1se)[coef_1se[,1] != 0]
+selected_var_names <- selected_var_names[selected_var_names != "(Intercept)"]
+formula_str <- paste("years_played ~", paste(selected_var_names, collapse = " + "))
+lasso_model <- lm(as.formula(formula_str), data = train)
 
-print(plot_driving_fitted)
+sumf <- summary(lasso_model)
+
+stargazer(lasso_model,
+          title = "Regression of LASSO selected predictors on years played",
+          font.size = "footnotesize",
+          header = FALSE)
+
 ```
+
+{{< pagebreak >}}
+The LASSO regression with $\lambda_{1se}$ kept 2 of the 8 original predictors. It only kept `mins_per_game` (0.399) and `rebounds_per_game` (0.379), both with high significance levels. As can be seen, the adjusted $R^2$ is only 0.09 below that of the full model. The LASSO fitted model is simply denoted as
+$$\text{years\_played} = `r round(coef(lasso_model)[1], 3)` + `r round(coef(lasso_model)["mins_per_game"], 3)`(\text{mins\_per\_game}) + `r round(coef(lasso_model)["rebounds_per_game"], 3)`(\text{rebounds\_per\_game})$$
+
+## Prediction and Model Comparison
+
+To evaluate the performance of the full model against the LASSO model, holdout validation was used. Both models were trained on a random 80/20 split of the overall NBA dataset, with `r nrow(train)` observations in the training set and `r nrow(test)` observations in the test set for the specified seed. Find a table of model performance metrics below. Lower RMSE, MAE, AIC, BIC, and Bias is better while higher $R^2$ and adj. $R^2$ is better.
+
+```{r}
+#| results: asis
+#| message: false
+#| echo: false
+
+lasso_model <- lm(years_played ~ mins_per_game + rebounds_per_game, data = train)
+full_model <- lm(years_played ~ mins_per_game + pts_per_game + 
+                   rebounds_per_game + assists_per_game + fg_percent + 
+                   three_pt_percent + ft_percent + draft_cat, 
+                 data = train)
+
+full_predictions <- predict(full_model, newdata = test)
+lasso_predictions <- predict(cv_lasso, newx = x_test, s = "lambda.1se")
+
+calculate_metrics <- function(predictions, actual, model_name) {
+  # Error metrics
+  rmse <- sqrt(mean((actual - predictions)^2))
+  mae <- mean(abs(actual - predictions))
+  
+  # R-squared
+  ss_res <- sum((actual - predictions)^2)
+  ss_tot <- sum((actual - mean(actual))^2)
+  r2 <- 1 - (ss_res / ss_tot)
+  
+  # Adjusted R-squared
+  n <- length(actual)
+  p <- if(model_name == "Full Model") 10 else sum(coef(cv_lasso, s = "lambda.1se") != 0) - 1
+  adj_r2 <- 1 - ((1 - r2) * (n - 1)) / (n - p - 1)
+  
+  # Get AIC and BIC
+  if(model_name == "Full Model") {
+    aic_val <- AIC(full_model)
+    bic_val <- BIC(full_model)
+  } else {
+    # Assuming lasso_model exists (refitted linear model)
+    aic_val <- AIC(lasso_model)
+    bic_val <- BIC(lasso_model)
+  }
+  
+  # Create data frame
+  data.frame(
+    Model = model_name,
+    RMSE = round(rmse, 3),
+    MAE = round(mae, 3),
+    R2 = round(r2, 3),
+    Adj_R2 = round(adj_r2, 3),
+    AIC = round(aic_val, 1),
+    BIC = round(bic_val, 1),
+    Bias = round(mean(actual - predictions), 3)
+  )
+}
+
+# Calculate for both models
+full_metrics <- calculate_metrics(full_predictions, y_test, "Full Model")
+lasso_metrics <- calculate_metrics(lasso_predictions, y_test, "LASSO Model")
+
+comparison_table <- rbind(full_metrics, lasso_metrics)
+
+# Format and display
+comparison_table %>%
+  rename(
+    ` ` = Model,
+    `RMSE` = RMSE,
+    `MAE` = MAE,
+    `R²` = R2,
+    `Adj. R²` = Adj_R2,
+    `AIC` = AIC,
+    `BIC` = BIC,
+    `Bias` = Bias
+  ) %>%
+  kable(
+    align = c("l", rep("c", 7)),
+    caption = "Model Performance Metrics",
+    booktabs = TRUE
+  ) %>%
+  kable_styling(
+    latex_options = c("striped", "hold_position"),
+    full_width = FALSE,
+    font_size = 10
+  ) %>%
+  column_spec(1, width = "3cm", bold = TRUE) %>%
+  column_spec(6, color = "black") %>%  # AIC
+  column_spec(7, color = "black")     # BIC
+```
+
+Both models appear to have performed similarly. As expected, the full model did better than the LASSO model on many different metrics: Root Mean Squared Error, Mean Absolute Error, $R^2$ and AIC. However, the adj. $R^2$, BIC, and Bias are both poor, meaning the marginal gains it has over the LASSO model in other categories are likely due to the sheer number of extra predictors.
+
+The following plot details the actual vs. predicted career length for both models, with the full model in red, LASSO model in blue, and the dashed lines being the prediction lines:
+
+```{r}
+#| results: asis
+#| message: false
+#| echo: false
+plot_data <- data.frame(
+  Actual = rep(test$years_played, 2),
+  Predicted = c(full_predictions, lasso_predictions),
+  Model = rep(c("Full Model", "LASSO Model"), each = nrow(test))
+)
+
+# Scatter plot: Actual vs Predicted
+ggplot(plot_data, aes(x = Actual, y = Predicted, color = Model)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray") +
+  facet_wrap(~ Model) +
+  labs(title = "Actual vs Predicted Career Length",
+       x = "Actual Years Played",
+       y = "Predicted Years Played") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+As can be seen, both models have reasonable predictions, as good as can be expected from a linear model. However, the tail ends (denoting extreme cases of low / high years played) are definitely weak points for both models.
+
+Taking a look at the following plot, with the full model in red, the LASSO model in blue, and the error magnitude categories on the x-axis displays more interesting diagnostics.
+
+```{r}
+#| results: asis
+#| message: false
+#| echo: false
+
+error_tolerance <- 1.0
+
+# Calculate prediction errors
+full_errors <- abs(test$years_played - full_predictions)
+lasso_errors <- abs(test$years_played - lasso_predictions)
+
+categorize_errors <- function(errors) {
+  data.frame(
+    "Very Accurate (≤1 year)" = sum(errors <= 1),
+    "Moderate Error (1-3 years)" = sum(errors > 1 & errors <= 3),
+    "Large Error (3-5 years)" = sum(errors > 3 & errors <= 5),
+    "Very Large Error (>5 years)" = sum(errors > 5),
+    "Mean Error" = round(mean(errors), 2),
+    "Median Error" = round(median(errors), 2)
+  )
+}
+
+full_error_cats <- categorize_errors(full_errors)
+lasso_error_cats <- categorize_errors(lasso_errors)
+
+# Bar plot of error categories
+error_summary <- data.frame(
+  Model = c("Full", "Full", "Full", "Full", "LASSO", "LASSO", "LASSO", "LASSO"),
+  Error_Category = rep(c("<1 year", "1-3 years", "3-5 years", "5+ years"), 2),
+  Count = c(full_error_cats[1,1], full_error_cats[1,2], 
+            full_error_cats[1,3], full_error_cats[1,4],
+            lasso_error_cats[1,1], lasso_error_cats[1,2],
+            lasso_error_cats[1,3], lasso_error_cats[1,4])
+)
+
+ggplot(error_summary, aes(x = Error_Category, y = Count, fill = Model)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Prediction Error Distribution by Model",
+       x = "Error Magnitude",
+       y = "Number of Players") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1")
+```
+
+The models have the majority of their predictions within 3 years of the actual values. However, the performance varies, with the LASSO model having a few more predictions within a year than the full model, but the full model having a lot more predictions within the 1-3 year error range than the LASSO model. It's difficult to tell from plot which model is more inaccurate since they're relatively even.
 
 ## Conclusions
 
-From the SLR analysis of both models, it was found that both strokes gained metrics had a statistically significant negative relationship with average score. This was predicted, since doing better than the average amount of strokes on any golf course will translate to a lower (better) score. 
+The analysis in this paper compared two regression models for predicting NBA career longevity. The full model used all eight proposed predictors, while the LASSO model selected only two using the tuning parameter that maximized parsimony: `mins_per_game` and `rebounds_per_game`. Both models performed similarly on test data, with the full model only having slightly better RMSE and $R^2$ and the LASSO model having better BIC and marginally more predictions than the other model within one year of the actual value. 
 
-The analysis also found that the model with average strokes gained putting as a predictor had an $R^2$ of 0.154 while the model with average strokes gained driving had an $R^2$ of 0.104. From the limited scope of this analysis, the data suggests that to answer the initial question, putting is a stronger linear predictor of PGA tournament success. 
+The key finding from the analysis is that for this data, a simple two-predictor model explains nearly as much variance as the full model, implying that playing time and rebounding are the most important factors for career length (that are available in this data). Shooting efficiency was significant, but high scoring volume was not.
 
-Although the suggestion that putting is a stronger predictor of score than driving can be derived from this analysis, it's important to note that both models represented less than a quarter of the overall variation in average score. This speaks to the complicated nature of scores even in something as seemingly straightforward as golf. There are likely better predictors for score, although they may or may not be linear. They not even be measurable aspects, such as the mental state and focus of a golfer within a high pressure tournament.
+The study has glaring limitations, of course. Career stats that aren't known at draft time can't be used to create a predictive model. Lacking data on external factors also left the analysis blind to things that would have definitely impacted career longevity (injuries, position, etc.). 
 
-While this study led to the interesting result that putting performance might be the more reliable path to success, driving and other aspects are fundamental in constituting a good score. The most successful golfers are those who strive to optimize all parts of their game.
+For future extensions, rookie stats would be a great place to start predictive modeling. Adding positional data and players' physical stats would also improve models. Despite the limitations of this project, the analysis shows that simpler models can be almost as effective as complex ones for explaining career longevity. 
 
 # References
